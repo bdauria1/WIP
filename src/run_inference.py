@@ -10,6 +10,8 @@ def main():
     landmarker = create_landmarker(vision.RunningMode.VIDEO)
     model = joblib.load("../models/gesture_model.pkl")
     cap = cv2.VideoCapture(0)
+    window_name = "ASL Gesture Recognition"
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
     start_time = time.time()
 
     prediction_buffer = deque(maxlen=15)
@@ -46,13 +48,36 @@ def main():
             last_confirmed = stable_letter
             prediction_buffer.clear()
 
-        cv2.rectangle(frame, (0, 0), (640, 60), (0, 0, 0), -1)
-        cv2.putText(frame, f"Current: {current_pred}", (10, 25),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv2.putText(frame, f"Text: {confirmed_text}", (10, 50),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        _, _, window_width, window_height = cv2.getWindowImageRect(window_name)
+        if window_width <= 0 or window_height <= 0:
+            window_height, window_width = frame.shape[:2]
 
-        cv2.imshow("ASL Gesture Recognition", frame)
+        frame_height, frame_width = frame.shape[:2]
+        scale = min(window_width / frame_width, window_height / frame_height)
+        display_width = max(1, int(frame_width * scale))
+        display_height = max(1, int(frame_height * scale))
+        interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
+        resized_frame = cv2.resize(frame, (display_width, display_height), interpolation=interpolation)
+        display_frame = cv2.copyMakeBorder(
+            resized_frame,
+            (window_height - display_height) // 2,
+            (window_height - display_height + 1) // 2,
+            (window_width - display_width) // 2,
+            (window_width - display_width + 1) // 2,
+            cv2.BORDER_CONSTANT,
+            value=(0, 0, 0),
+        )
+
+        header_height = max(1, int(60 * scale))
+        text_scale = 0.7 * scale
+        text_thickness = max(1, int(2 * scale))
+        cv2.rectangle(display_frame, (0, 0), (window_width, header_height), (0, 0, 0), -1)
+        cv2.putText(display_frame, f"Current: {current_pred}", (int(10 * scale), int(25 * scale)),
+                    cv2.FONT_HERSHEY_SIMPLEX, text_scale, (255, 255, 255), text_thickness)
+        cv2.putText(display_frame, f"Text: {confirmed_text}", (int(10 * scale), int(50 * scale)),
+                    cv2.FONT_HERSHEY_SIMPLEX, text_scale, (0, 255, 0), text_thickness)
+
+        cv2.imshow(window_name, display_frame)
         key = cv2.waitKey(1) & 0xFF
 
         if key == 27:
