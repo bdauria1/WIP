@@ -10,25 +10,20 @@
         </p>
         <h1 class="deco-title mt-3 text-3xl sm:text-5xl">ASL Gesture Recognition</h1>
         <div class="deco-rule mx-auto mt-6 max-w-md"><span></span></div>
+        <nav class="mx-auto mt-8 flex max-w-xl flex-wrap justify-center gap-2" aria-label="App">
+          <RouterLink
+            v-for="link in links"
+            :key="link.to"
+            :to="link.to"
+            class="nav-link"
+          >
+            {{ link.label }}
+          </RouterLink>
+        </nav>
       </header>
 
-      <main class="mx-auto grid max-w-6xl gap-10 px-4 py-10 sm:px-6 lg:grid-cols-5">
-        <section class="lg:col-span-3">
-          <WebcamFeed
-            @letter-detected="currentLetter = $event"
-            @letter-confirmed="confirmedText += $event"
-            @no-hand="currentLetter = null"
-          />
-          <p class="mt-5 text-center text-sm tracking-wide text-gold-dim">
-            Hold each sign steady for about half a second to lock in the letter.
-          </p>
-        </section>
-
-        <section class="space-y-6 lg:col-span-2">
-          <LetterDisplay :current-letter="currentLetter" :confirmed-text="confirmedText" />
-          <Controls @space="addSpace" @backspace="backspace" @clear="confirmedText = ''" />
-          <HowToPanel />
-        </section>
+      <main>
+        <RouterView />
       </main>
 
       <footer class="mt-8 pb-10">
@@ -58,37 +53,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import WebcamFeed from './components/WebcamFeed.vue'
-import LetterDisplay from './components/LetterDisplay.vue'
-import Controls from './components/Controls.vue'
-import HowToPanel from './components/HowToPanel.vue'
-
-const REPO_URL = 'https://github.com/bdauria1'
-
+const REPO_URL = 'https://github.com/bdauria1/WIP'
 const lamps = [64, 48, 36, 28, 36, 48, 64]
 
-const currentLetter = ref(null)
-const confirmedText = ref('')
-
-function addSpace() {
-  confirmedText.value += ' '
-}
-
-function backspace() {
-  confirmedText.value = confirmedText.value.slice(0, -1)
-}
-
-function onKeydown(e) {
-  if (e.code === 'Space') {
-    e.preventDefault()
-    addSpace()
-  } else if (e.code === 'Backspace') {
-    e.preventDefault()
-    backspace()
-  }
-}
-
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+const links = [
+  { to: '/', label: 'Practice' },
+  { to: '/spell', label: 'Spell' },
+  { to: '/alphabet', label: 'Alphabet' },
+  { to: '/progress', label: 'Progress' },
+]
 </script>
