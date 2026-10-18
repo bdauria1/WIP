@@ -1,5 +1,7 @@
-import { reactive, watch } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { ALPHABET, STATIC_LETTERS } from '../data/letters'
+import { authReady, authUser } from './useAuth'
+import { supabase } from '../lib/supabase'
 
 const KEY = 'asl-progress-v1'
 
@@ -15,57 +17,168 @@ function emptyState() {
   return { letters: emptyLetters(), wordsCompleted: 0, streak: 0 }
 }
 
+function normalizeState(parsed) {
+  const letters = emptyLetters()
+  for (const id of ALPHABET) {
+    const row = parsed?.letters?.[id]
+    if (!row) continue
+    letters[id] = {
+      hits: Number(row.hits) || 0,
+      misses: Number(row.misses) || 0,
+      confusions: row.confusions && typeof row.confusions === 'object' ? row.confusions : {},
+    }
+  }
+  return {
+    letters,
+    wordsCompleted: Number(parsed?.wordsCompleted) || 0,
+    streak: Number(parsed?.streak) || 0,
+  }
+}
+
 function load() {
   try {
     const raw = localStorage.getItem(KEY)
     if (!raw) return emptyState()
-    const parsed = JSON.parse(raw)
-    const letters = emptyLetters()
-    for (const id of ALPHABET) {
-      const row = parsed.letters?.[id]
-      if (!row) continue
-      letters[id] = {
-        hits: Number(row.hits) || 0,
-        misses: Number(row.misses) || 0,
-        confusions: row.confusions && typeof row.confusions === 'object' ? row.confusions : {},
-      }
-    }
-    return {
-      letters,
-      wordsCompleted: Number(parsed.wordsCompleted) || 0,
-      streak: Number(parsed.streak) || 0,
-    }
+    return normalizeState(JSON.parse(raw))
   } catch {
     return emptyState()
   }
 }
 
 const state = reactive(load())
+const ready = ref(true)
+const error = ref('')
+let activeUserId = null
+let loadGeneration = 0
+let pendingMutations = []
+let saveTimer
+let saveQueue = Promise.resolve()
 
-watch(
-  state,
-  () => {
-    localStorage.setItem(KEY, JSON.stringify(state))
-  },
-  { deep: true },
-)
+function replaceState(next) {
+  state.letters = next.letters
+  state.wordsCompleted = next.wordsCompleted
+  state.streak = next.streak
+}
 
-export function useProgress() {
-  function recordAttempt({ target, predicted }) {
-    const row = state.letters[target]
-    if (!row || !predicted) return
-    if (predicted === target) {
+function scheduleSave() {
+  if (!authReady.value || !ready.value) return
+  if (!activeUserId) {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(state))
+      error.value = ''
+    } catch (saveError) {
+      error.value = `Could not save browser progress: ${saveError.message}`
+    }
+    return
+  }
+
+  clearTimeout(saveTimer)
+  const userId = activeUserId
+  saveTimer = setTimeout(() => {
+    saveQueue = saveQueue
+      .catch(() => {})
+      .then(async () => {
+        if (!supabase || activeUserId !== userId) return
+        const { error: saveError } = await supabase
+          .from('user_progress')
+          .upsert(
+            { user_id: userId, progress: JSON.parse(JSON.stringify(state)) },
+            { onConflict: 'user_id' },
+          )
+        if (saveError) throw saveError
+        if (activeUserId === userId) error.value = ''
+      })
+      .catch((saveError) => {
+        if (activeUserId === userId) error.value = `Could not save progress: ${saveError.message}`
+      })
+  }, 400)
+}
+
+function applyMutation(mutation) {
+  if (mutation.type === 'reset') {
+    replaceState(emptyState())
+  } else if (mutation.type === 'word-complete') {
+    state.wordsCompleted += 1
+  } else {
+    const row = state.letters[mutation.target]
+    if (!row || !mutation.predicted) return
+    if (mutation.predicted === mutation.target) {
       row.hits += 1
       state.streak += 1
     } else {
       row.misses += 1
-      row.confusions[predicted] = (row.confusions[predicted] || 0) + 1
+      row.confusions[mutation.predicted] = (row.confusions[mutation.predicted] || 0) + 1
       state.streak = 0
     }
   }
+}
+
+async function loadUserProgress(userId, generation) {
+  try {
+    const { data, error: loadError } = await supabase
+      .from('user_progress')
+      .select('progress')
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (loadError) throw loadError
+    if (generation !== loadGeneration) return
+
+    replaceState(data ? normalizeState(data.progress) : emptyState())
+    for (const mutation of pendingMutations) applyMutation(mutation)
+    pendingMutations = []
+    ready.value = true
+    scheduleSave()
+  } catch (loadError) {
+    if (generation !== loadGeneration) return
+    error.value = `Could not load account progress: ${loadError.message}`
+  }
+}
+
+function refreshUserProgress() {
+  if (!activeUserId || !supabase) return
+  const generation = ++loadGeneration
+  ready.value = false
+  error.value = ''
+  loadUserProgress(activeUserId, generation)
+}
+
+watch(
+  [authReady, authUser],
+  ([isAuthReady, user]) => {
+    if (!isAuthReady) return
+    const userId = user?.id ?? null
+    if (userId === activeUserId && ready.value) return
+    activeUserId = userId
+    const generation = ++loadGeneration
+    pendingMutations = []
+    clearTimeout(saveTimer)
+    error.value = ''
+
+    if (userId && supabase) {
+      ready.value = false
+      replaceState(emptyState())
+      loadUserProgress(userId, generation)
+    } else {
+      ready.value = true
+      replaceState(load())
+    }
+  },
+  { immediate: true, flush: 'sync' },
+)
+
+export function useProgress() {
+  function recordAttempt({ target, predicted }) {
+    const mutation = { type: 'attempt', target, predicted }
+    applyMutation(mutation)
+    if (activeUserId && !ready.value) pendingMutations.push(mutation)
+    else scheduleSave()
+  }
 
   function recordWordComplete() {
-    state.wordsCompleted += 1
+    const mutation = { type: 'word-complete' }
+    applyMutation(mutation)
+    if (activeUserId && !ready.value) pendingMutations.push(mutation)
+    else scheduleSave()
   }
 
   function weakest(n = 5) {
@@ -88,11 +201,21 @@ export function useProgress() {
   }
 
   function reset() {
-    const next = emptyState()
-    state.letters = next.letters
-    state.wordsCompleted = 0
-    state.streak = 0
+    const mutation = { type: 'reset' }
+    applyMutation(mutation)
+    if (activeUserId && !ready.value) pendingMutations.push(mutation)
+    else scheduleSave()
   }
 
-  return { state, recordAttempt, recordWordComplete, weakest, topConfusion, reset }
+  return {
+    state,
+    ready,
+    error,
+    recordAttempt,
+    recordWordComplete,
+    weakest,
+    topConfusion,
+    reset,
+    refreshUserProgress,
+  }
 }

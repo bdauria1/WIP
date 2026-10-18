@@ -16,8 +16,25 @@
     </div>
 
     <p class="mt-8 text-sm tracking-wide text-gold-dim">
-      Stored only in this browser. Practice and Spell never upload video or scores.
+      <template v-if="user">Progress syncs to your account. </template>
+      <template v-else>Progress is stored only in this browser. </template>
+      Hand tracking runs locally; camera video is never uploaded.
     </p>
+
+    <p v-if="!ready" class="mt-4 text-sm text-gold-dim" role="status">
+      Loading progress…
+    </p>
+    <div v-if="error" class="mt-4 flex flex-wrap items-center gap-4 text-sm text-ember" role="alert">
+      <span>{{ error }}</span>
+      <button
+        v-if="user"
+        type="button"
+        class="underline underline-offset-4 hover:text-gold"
+        @click="refreshUserProgress"
+      >
+        Retry
+      </button>
+    </div>
 
     <div class="deco-frame mt-6 overflow-x-auto p-4">
       <table class="w-full min-w-[28rem] text-left text-sm">
@@ -51,8 +68,8 @@
       </table>
     </div>
 
-    <button type="button" class="deco-btn deco-btn-danger mt-6" @click="reset">
-      Reset local stats
+    <button type="button" class="deco-btn deco-btn-danger mt-6" :disabled="!ready" @click="reset">
+      Reset stats
     </button>
   </div>
 </template>
@@ -61,8 +78,10 @@
 import { computed } from 'vue'
 import { ALPHABET, letterMeta } from '../data/letters'
 import { useProgress } from '../composables/useProgress'
+import { useAuth } from '../composables/useAuth'
 
-const { state, topConfusion, reset } = useProgress()
+const { state, ready, error, topConfusion, reset, refreshUserProgress } = useProgress()
+const { user } = useAuth()
 
 const totals = computed(() => {
   let hits = 0

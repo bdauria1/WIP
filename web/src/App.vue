@@ -61,5 +61,6 @@ const links = [
   { to: '/spell', label: 'Spell' },
   { to: '/alphabet', label: 'Alphabet' },
   { to: '/progress', label: 'Progress' },
+  { to: '/account', label: 'Account' },
 ]
 </script>
