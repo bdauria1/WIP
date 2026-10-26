@@ -3,26 +3,39 @@
     <div class="beam beam-left" aria-hidden="true"></div>
     <div class="beam beam-right" aria-hidden="true"></div>
 
-    <div class="relative z-10">
-      <header class="px-4 pt-10 text-center sm:pt-14">
-        <p class="text-xs uppercase tracking-[0.5em] text-gold-dim">
-          Fingerspelling in the browser
-        </p>
-        <h1 class="deco-title mt-3 text-3xl sm:text-5xl">ASL Gesture Recognition</h1>
-        <div class="deco-rule mx-auto mt-6 max-w-md"><span></span></div>
-        <nav class="mx-auto mt-8 flex max-w-xl flex-wrap justify-center gap-2" aria-label="App">
-          <RouterLink
-            v-for="link in links"
-            :key="link.to"
-            :to="link.to"
-            class="nav-link"
-          >
-            {{ link.label }}
+    <div class="relative z-10 flex min-h-screen flex-col">
+      <header class="border-b border-gold-dim/30 bg-ink/70 backdrop-blur">
+        <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-4 sm:px-6">
+          <RouterLink to="/" class="deco-title text-lg sm:text-xl" aria-label="ASL Gesture Recognition home">
+            ASL<span class="text-gold-dim"> · </span>Gesture
           </RouterLink>
-        </nav>
+
+          <nav
+            v-if="!isSiteLayout"
+            class="order-last flex w-full flex-wrap justify-center gap-2 sm:order-none sm:w-auto"
+            aria-label="App"
+          >
+            <RouterLink v-for="link in links" :key="link.to" :to="link.to" class="nav-link">
+              {{ link.label }}
+            </RouterLink>
+          </nav>
+
+          <div class="flex items-center gap-2">
+            <template v-if="user">
+              <RouterLink v-if="isSiteLayout" to="/practice" class="nav-link">Open app</RouterLink>
+              <RouterLink to="/account" class="nav-link" :title="user.email">Account</RouterLink>
+            </template>
+            <template v-else>
+              <RouterLink v-if="route.name !== 'signin'" to="/signin" class="nav-link">Sign in</RouterLink>
+              <RouterLink v-if="isSiteLayout" to="/practice" class="nav-link router-link-exact-active">
+                Try it
+              </RouterLink>
+            </template>
+          </div>
+        </div>
       </header>
 
-      <main>
+      <main class="flex-1">
         <RouterView />
       </main>
 
@@ -53,14 +66,21 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import { useAuth } from './composables/useAuth'
+
 const REPO_URL = 'https://github.com/bdauria1/WIP'
 const lamps = [64, 48, 36, 28, 36, 48, 64]
 
+const route = useRoute()
+const { user } = useAuth()
+const isSiteLayout = computed(() => route.meta.layout === 'site')
+
 const links = [
-  { to: '/', label: 'Practice' },
+  { to: '/practice', label: 'Practice' },
   { to: '/spell', label: 'Spell' },
   { to: '/alphabet', label: 'Alphabet' },
   { to: '/progress', label: 'Progress' },
-  { to: '/account', label: 'Account' },
 ]
 </script>
