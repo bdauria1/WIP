@@ -1,7 +1,7 @@
 import { reactive, ref, watch } from 'vue'
 import { ALPHABET, STATIC_LETTERS } from '../data/letters'
 import { authReady, authUser } from './useAuth'
-import { supabase } from '../lib/supabase'
+import { pb, errorMessage } from '../lib/pocketbase'
 
 const KEY = 'asl-progress-v1'
 
@@ -49,6 +49,7 @@ const state = reactive(load())
 const ready = ref(true)
 const error = ref('')
 let activeUserId = null
+let recordId = null
 let loadGeneration = 0
 let pendingMutations = []
 let saveTimer
@@ -78,18 +79,18 @@ function scheduleSave() {
     saveQueue = saveQueue
       .catch(() => {})
       .then(async () => {
-        if (!supabase || activeUserId !== userId) return
-        const { error: saveError } = await supabase
-          .from('user_progress')
-          .upsert(
-            { user_id: userId, progress: JSON.parse(JSON.stringify(state)) },
-            { onConflict: 'user_id' },
-          )
-        if (saveError) throw saveError
+        if (activeUserId !== userId) return
+        const progress = JSON.parse(JSON.stringify(state))
+        if (recordId) {
+          await pb.collection('user_progress').update(recordId, { progress })
+        } else {
+          const created = await pb.collection('user_progress').create({ user: userId, progress })
+          if (activeUserId === userId) recordId = created.id
+        }
         if (activeUserId === userId) error.value = ''
       })
       .catch((saveError) => {
-        if (activeUserId === userId) error.value = `Could not save progress: ${saveError.message}`
+        if (activeUserId === userId) error.value = `Could not save progress: ${errorMessage(saveError)}`
       })
   }, 400)
 }
@@ -115,27 +116,30 @@ function applyMutation(mutation) {
 
 async function loadUserProgress(userId, generation) {
   try {
-    const { data, error: loadError } = await supabase
-      .from('user_progress')
-      .select('progress')
-      .eq('user_id', userId)
-      .maybeSingle()
-    if (loadError) throw loadError
+    let record = null
+    try {
+      record = await pb
+        .collection('user_progress')
+        .getFirstListItem(pb.filter('user = {:userId}', { userId }))
+    } catch (loadError) {
+      if (loadError?.status !== 404) throw loadError
+    }
     if (generation !== loadGeneration) return
 
-    replaceState(data ? normalizeState(data.progress) : emptyState())
+    recordId = record?.id ?? null
+    replaceState(record ? normalizeState(record.progress) : emptyState())
     for (const mutation of pendingMutations) applyMutation(mutation)
     pendingMutations = []
     ready.value = true
     scheduleSave()
   } catch (loadError) {
     if (generation !== loadGeneration) return
-    error.value = `Could not load account progress: ${loadError.message}`
+    error.value = `Could not load account progress: ${errorMessage(loadError)}`
   }
 }
 
 function refreshUserProgress() {
-  if (!activeUserId || !supabase) return
+  if (!activeUserId) return
   const generation = ++loadGeneration
   ready.value = false
   error.value = ''
@@ -149,12 +153,13 @@ watch(
     const userId = user?.id ?? null
     if (userId === activeUserId && ready.value) return
     activeUserId = userId
+    recordId = null
     const generation = ++loadGeneration
     pendingMutations = []
     clearTimeout(saveTimer)
     error.value = ''
 
-    if (userId && supabase) {
+    if (userId) {
       ready.value = false
       replaceState(emptyState())
       loadUserProgress(userId, generation)

@@ -1,0 +1,9 @@
+node_modules
+dist
+pb_data
+pocketbase
+.env
+.env.*
+.vscode
+Dockerfile
+docker-compose.yml

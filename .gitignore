@@ -4,3 +4,7 @@ __pycache__/
 web/node_modules/
 web/dist/
 .env
+web/pb_data/
+web/pocketbase/pb_data/
+web/pocketbase/pocketbase.exe
+web/pocketbase/pocketbase

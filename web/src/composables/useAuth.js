@@ -1,48 +1,54 @@
 import { ref } from 'vue'
-import { supabase, supabaseConfigured } from '../lib/supabase'
+import { pb, errorMessage } from '../lib/pocketbase'
 
 export const authUser = ref(null)
-export const authReady = ref(!supabaseConfigured)
+export const authReady = ref(false)
 export const authError = ref('')
 
 let initialized = false
 
 export async function initializeAuth() {
-  if (initialized || !supabase) return
+  if (initialized) return
   initialized = true
 
-  supabase.auth.onAuthStateChange((_event, session) => {
-    authUser.value = session?.user ?? null
+  pb.authStore.onChange((_token, record) => {
+    authUser.value = record ?? null
   })
 
   try {
-    const { data, error } = await supabase.auth.getSession()
-    if (error) {
-      authError.value = error.message
-    } else {
-      authUser.value = data.session?.user ?? null
-    }
+    if (pb.authStore.isValid) await pb.collection('users').authRefresh()
+    else pb.authStore.clear()
   } catch (error) {
-    authError.value = error.message
+    if ([401, 403, 404].includes(error?.status)) pb.authStore.clear()
+    else authError.value = errorMessage(error)
   } finally {
+    authUser.value = pb.authStore.isValid ? pb.authStore.record : null
     authReady.value = true
   }
 }
 
 export function useAuth() {
   async function signUp(email, password) {
-    if (!supabase) throw new Error('Account login is not configured yet.')
-    return supabase.auth.signUp({ email, password })
+    try {
+      await pb.collection('users').create({ email, password, passwordConfirm: password })
+    } catch (error) {
+      throw new Error(errorMessage(error))
+    }
+    return signIn(email, password)
   }
 
   async function signIn(email, password) {
-    if (!supabase) throw new Error('Account login is not configured yet.')
-    return supabase.auth.signInWithPassword({ email, password })
+    try {
+      await pb.collection('users').authWithPassword(email, password)
+      authError.value = ''
+    } catch (error) {
+      if (error?.status === 400) throw new Error('Incorrect email or password.')
+      throw new Error(errorMessage(error))
+    }
   }
 
-  async function signOut() {
-    if (!supabase) throw new Error('Account login is not configured yet.')
-    return supabase.auth.signOut()
+  function signOut() {
+    pb.authStore.clear()
   }
 
   return { user: authUser, ready: authReady, error: authError, signUp, signIn, signOut }

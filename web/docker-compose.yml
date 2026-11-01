@@ -1,0 +1,18 @@
+services:
+  web:
+    build: .
+    image: asl-gesture-web
+    container_name: asl-gesture-web
+    ports:
+      - "8080:80"
+    depends_on:
+      - pocketbase
+    restart: unless-stopped
+
+  pocketbase:
+    build: ./pocketbase
+    image: asl-gesture-pocketbase
+    container_name: asl-gesture-pocketbase
+    volumes:
+      - ./pb_data:/pb/pb_data
+    restart: unless-stopped

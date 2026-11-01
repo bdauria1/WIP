@@ -22,14 +22,8 @@
             Retry
           </button>
         </p>
-        <p v-if="formError" class="mt-4 text-sm text-ember" role="alert">{{ formError }}</p>
-        <button
-          type="button"
-          class="deco-btn mt-6 w-full"
-          :disabled="submitting"
-          @click="logout"
-        >
-          {{ submitting ? 'Signing out…' : 'Sign out' }}
+        <button type="button" class="deco-btn mt-6 w-full" @click="logout">
+          Sign out
         </button>
       </template>
     </div>
@@ -37,7 +31,6 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import { useProgress } from '../composables/useProgress'
@@ -45,20 +38,9 @@ import { useProgress } from '../composables/useProgress'
 const router = useRouter()
 const { user, signOut } = useAuth()
 const { error: progressError, refreshUserProgress } = useProgress()
-const submitting = ref(false)
-const formError = ref('')
 
-async function logout() {
-  submitting.value = true
-  formError.value = ''
-  try {
-    const { error } = await signOut()
-    if (error) throw error
-    router.push('/')
-  } catch (error) {
-    formError.value = error.message
-  } finally {
-    submitting.value = false
-  }
+function logout() {
+  signOut()
+  router.push('/')
 }
 </script>

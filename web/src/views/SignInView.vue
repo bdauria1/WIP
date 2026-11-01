@@ -31,12 +31,7 @@
         </button>
       </div>
 
-      <p v-if="!configured" class="mt-8 text-sm leading-relaxed text-gold-dim">
-        Account login needs a Supabase project. Follow the setup steps in the project README,
-        then add its URL and publishable key to <code>web/.env</code>.
-      </p>
-
-      <form v-else class="mt-8 space-y-5" @submit.prevent="submit">
+      <form class="mt-8 space-y-5" @submit.prevent="submit">
         <label class="block text-xs uppercase tracking-[0.25em] text-gold-dim">
           Email
           <input
@@ -65,7 +60,6 @@
         <p v-if="authError || formError" class="text-sm text-ember" role="alert">
           {{ formError || authError }}
         </p>
-        <p v-if="message" class="text-sm text-glow" role="status">{{ message }}</p>
 
         <button type="submit" class="deco-btn deco-btn-active w-full" :disabled="submitting">
           {{ submitting ? 'Please wait…' : mode === 'sign-in' ? 'Sign in' : 'Create account' }}
@@ -89,18 +83,15 @@
 import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
-import { supabaseConfigured } from '../lib/supabase'
 
 const route = useRoute()
 const router = useRouter()
 const { user, error: authError, signIn, signUp } = useAuth()
-const configured = supabaseConfigured
 const mode = ref(route.query.mode === 'signup' ? 'sign-up' : 'sign-in')
 const email = ref('')
 const password = ref('')
 const submitting = ref(false)
 const formError = ref('')
-const message = ref('')
 
 watch(() => route.query.mode, (value) => {
   mode.value = value === 'signup' ? 'sign-up' : 'sign-in'
@@ -120,22 +111,15 @@ function redirectTarget() {
 function setMode(value) {
   if (mode.value === value) return
   formError.value = ''
-  message.value = ''
   router.replace({ query: { ...route.query, mode: value === 'sign-up' ? 'signup' : undefined } })
 }
 
 async function submit() {
   submitting.value = true
   formError.value = ''
-  message.value = ''
   try {
-    const result = mode.value === 'sign-in'
-      ? await signIn(email.value, password.value)
-      : await signUp(email.value, password.value)
-    if (result.error) throw result.error
-    if (mode.value === 'sign-up' && !result.data.session) {
-      message.value = 'Check your email for a confirmation link, then sign in.'
-    }
+    if (mode.value === 'sign-in') await signIn(email.value, password.value)
+    else await signUp(email.value, password.value)
   } catch (error) {
     formError.value = error.message
   } finally {
