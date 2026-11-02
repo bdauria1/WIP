@@ -84,8 +84,17 @@ function scheduleSave() {
         if (recordId) {
           await pb.collection('user_progress').update(recordId, { progress })
         } else {
-          const created = await pb.collection('user_progress').create({ user: userId, progress })
-          if (activeUserId === userId) recordId = created.id
+          let saved
+          try {
+            saved = await pb.collection('user_progress').create({ user: userId, progress })
+          } catch (createError) {
+            if (createError?.status !== 400) throw createError
+            const existing = await pb
+              .collection('user_progress')
+              .getFirstListItem(pb.filter('user = {:userId}', { userId }))
+            saved = await pb.collection('user_progress').update(existing.id, { progress })
+          }
+          if (activeUserId === userId) recordId = saved.id
         }
         if (activeUserId === userId) error.value = ''
       })
